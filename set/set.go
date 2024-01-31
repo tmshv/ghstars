@@ -16,7 +16,7 @@ func (s *Set[T]) Del(value T) {
 	delete(s.elements, value)
 }
 
-func (s *Set[T]) Contains(value T) bool {
+func (s *Set[T]) Has(value T) bool {
 	_, exists := s.elements[value]
 	return exists
 }
