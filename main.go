@@ -104,7 +104,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			title: msg.star.Repo.HTMLURL,
 			desc:  msg.star.Repo.Description,
 		}
-		m.list.InsertItem(0, i)
+		m.list.InsertItem(10000, i) // TODO use other value to add at the end of list
 		return m, nil
 
 	case GhstarsStartMsg:
