@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -226,8 +227,9 @@ type GhStar struct {
 }
 
 type Github struct {
-	token   string
-	perpage int
+	token    string
+	perpage  int
+	usecache bool
 }
 
 type result struct {
@@ -239,6 +241,48 @@ func (r *result) Unwrap() (*GhStarV3, error) {
 	return &r.val, r.err
 }
 
+func (gh *Github) getCachedStars(filename string) ([]byte, error) {
+	_, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	fileContent, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return fileContent, nil
+}
+
+func (gh *Github) fetchStars(username string, page int) ([]byte, error) {
+	url := fmt.Sprintf("https://api.github.com/users/%s/starred?per_page=%d&page=%d", username, gh.perpage, page)
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gh.token)
+	req.Header.Set("Accept", "application/vnd.github.v3.star+json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return body, nil
+}
+
 func (gh *Github) GetStars(username string) <-chan result {
 	ch := make(chan result)
 	go func() {
@@ -246,45 +290,48 @@ func (gh *Github) GetStars(username string) <-chan result {
 
 		page := 1
 		for {
-			url := fmt.Sprintf("https://api.github.com/users/%s/starred?per_page=%d&page=%d", username, gh.perpage, page)
-			client := &http.Client{}
-			req, err := http.NewRequest("GET", url, nil)
-			if err != nil {
-				ch <- result{err: err}
-				return
-			}
-			req.Header.Set("Authorization", "Bearer "+gh.token)
-			req.Header.Set("Accept", "application/vnd.github.v3.star+json")
-			resp, err := client.Do(req)
-			if err != nil {
-				ch <- result{err: err}
-				return
+			filename := fmt.Sprintf(".gh_%s_%d.json", username, page)
+
+			var data []byte
+			var cached bool
+
+			// Try to get cached page
+			if gh.usecache {
+				val, err := gh.getCachedStars(filename)
+				if err == nil {
+					data = val
+					cached = true
+				}
 			}
 
-			if resp.StatusCode != http.StatusOK {
-				ch <- result{err: fmt.Errorf("unexpected status code: %d", resp.StatusCode)}
-				resp.Body.Close()
-				return
-			}
-
-			body, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if err != nil {
-				ch <- result{err: err}
-				return
+			// Fetch page from GitHub
+			if !cached {
+				val, err := gh.fetchStars(username, page)
+				if err != nil {
+					ch <- result{err: err}
+					return
+				}
+				data = val
 			}
 
 			var stars []GhStarV3
-			err = json.Unmarshal(body, &stars)
+			err := json.Unmarshal(data, &stars)
 			if err != nil {
 				ch <- result{err: err}
 				return
 			}
 
+			// Got last page. Stop infinite loop
 			if len(stars) == 0 {
 				break
 			}
 
+			// Store cache if needed
+			if gh.usecache && !cached {
+				os.WriteFile(filename, data, 0644)
+			}
+
+			// Emit items found on page
 			for _, star := range stars {
 				ch <- result{val: star}
 			}
@@ -296,5 +343,9 @@ func (gh *Github) GetStars(username string) <-chan result {
 }
 
 func New(token string) *Github {
-	return &Github{token: token, perpage: 100} // 100 is max
+	return &Github{
+		token:    token,
+		perpage:  100, // 100 is max
+		usecache: true,
+	}
 }
