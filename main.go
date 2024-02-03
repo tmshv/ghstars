@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -19,6 +20,11 @@ type model struct {
 	textInput textinput.Model
 	list      list.Model
 	err       error
+}
+
+func monthsPassed(t time.Time) int {
+	// f := t.Format("20060102")
+	return int(time.Since(t).Hours() / 24 / 30)
 }
 
 func OpenURL(url string) error {
@@ -57,7 +63,8 @@ func initialModel() model {
 	ti.Width = 20
 
 	listdelegate := list.NewDefaultDelegate()
-	listdelegate.ShowDescription = false
+	listdelegate.ShowDescription = true
+	listdelegate.SetHeight(3)
 	l := list.New([]list.Item{}, listdelegate, 0, 0)
 	// l.SetFilteringEnabled(false)
 	l.Title = "Stars"
@@ -99,10 +106,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 
 	case AddStarMsg:
+		// Skip archived repo (be an option in the future)
+		if msg.star.Repo.Archived {
+			return m, nil
+		}
+
+		var upd string
+		last := monthsPassed(msg.star.Repo.UpdatedAt)
+		if last == 0 {
+			upd = "active"
+		} else {
+			upd = fmt.Sprintf("last %dm", last)
+		}
+		if msg.star.Repo.Archived {
+			upd = "archived"
+		}
+		desc := fmt.Sprintf("(%s; added %d; stars %d) \n %s",
+			upd,
+			monthsPassed(msg.star.StarredAt),
+			msg.star.Repo.StargazersCount,
+			msg.star.Repo.Description,
+		)
 		i := repoitem{
 			url:   msg.star.Repo.HTMLURL,
 			title: msg.star.Repo.HTMLURL,
-			desc:  msg.star.Repo.Description,
+			desc:  desc,
 		}
 		m.list.InsertItem(10000, i) // TODO use other value to add at the end of list
 		return m, nil
