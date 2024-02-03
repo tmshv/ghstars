@@ -15,8 +15,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+type GhstarsStartMsg struct{}
+type GhstarsStopMsg struct{}
+
 type AddStarMsg struct {
 	star *github.GhStarV3
+}
+
+func GhStartFetch() tea.Msg {
+	return &GhstarsStartMsg{}
+}
+
+func GhStopFetch() tea.Msg {
+	return &GhstarsStopMsg{}
 }
 
 func Ghfetch(p *tea.Program) {
@@ -68,7 +79,10 @@ func Ghfetch(p *tea.Program) {
 
 		fmt.Println("")
 	}
+
+	p.Send(GhStopFetch())
 	return
+
 	fmt.Printf("Total %d\n", total)
 
 	fmt.Println("Topics:")

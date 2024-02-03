@@ -56,7 +56,10 @@ func initialModel() model {
 	ti.CharLimit = 156
 	ti.Width = 20
 
-	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	listdelegate := list.NewDefaultDelegate()
+	listdelegate.ShowDescription = false
+	l := list.New([]list.Item{}, listdelegate, 0, 0)
+	// l.SetFilteringEnabled(false)
 	l.Title = "Stars"
 
 	return model{
@@ -67,7 +70,10 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(
+		textinput.Blink,
+		GhStartFetch,
+	)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -79,10 +85,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 		case tea.KeyEnter:
-			c := m.list.Cursor()
-			i := m.list.Items()[c]
-			switch val := i.(type) {
-			case repoitem:
+			val, ok := m.list.SelectedItem().(repoitem)
+			if ok {
 				err := OpenURL(val.URL())
 				if err != nil {
 					return m, tea.Quit
@@ -103,6 +107,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.InsertItem(0, i)
 		return m, nil
 
+	case GhstarsStartMsg:
+		return m, m.list.StartSpinner()
+
+	case GhstarsStopMsg:
+		m.list.StopSpinner()
+
 	// We handle errors just like any other message
 	case errMsg:
 		m.err = msg
@@ -115,18 +125,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	repos := docStyle.Render(m.list.View())
-	search := m.textInput.Value()
-	return fmt.Sprintf(
-		"Query: \n\n%s\n\nIs=%s\n\n%s\n\n%s",
-		m.textInput.View(),
-		search,
-		repos,
-		"(esc to quit)",
-	) + "\n"
+	var blocks []string
+
+	// value := m.textInput.Value()
+
+	// blocks = append(blocks, docStyle.Render(m.list.View()))
+	// blocks = append(blocks, m.textInput.View())
+	blocks = append(blocks, m.list.View())
+	val, ok := m.list.SelectedItem().(repoitem)
+	if ok {
+		blocks = append(blocks, docStyle.Render(fmt.Sprintf("select: %s", val.url)))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, blocks...)
 }
 
-var docStyle = lipgloss.NewStyle().Margin(1, 2)
+// var docStyle = lipgloss.NewStyle().Margin(1, 2)
+// Add a purple, rectangular border
+var docStyle = lipgloss.NewStyle().
+	BorderStyle(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("63"))
 
 type repoitem struct {
 	url, title, desc string
@@ -135,7 +153,9 @@ type repoitem struct {
 func (i repoitem) URL() string         { return i.url }
 func (i repoitem) Title() string       { return i.title }
 func (i repoitem) Description() string { return i.desc }
-func (i repoitem) FilterValue() string { return i.title }
+func (i repoitem) FilterValue() string {
+	return i.title + " " + i.desc
+}
 
 func main() {
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
