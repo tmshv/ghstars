@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -131,6 +132,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			url:   msg.star.Repo.HTMLURL,
 			title: msg.star.Repo.HTMLURL,
 			desc:  desc,
+			lang:  msg.star.Repo.Language,
+			tags:  msg.star.Repo.Topics,
 		}
 		m.list.InsertItem(10000, i) // TODO use other value to add at the end of list
 		return m, nil
@@ -175,14 +178,23 @@ var docStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color("63"))
 
 type repoitem struct {
-	url, title, desc string
+	url   string
+	title string
+	desc  string
+	tags  []string
+	lang  string
 }
 
 func (i repoitem) URL() string         { return i.url }
 func (i repoitem) Title() string       { return i.title }
 func (i repoitem) Description() string { return i.desc }
 func (i repoitem) FilterValue() string {
-	return i.title + " " + i.desc
+	var blocks []string
+	blocks = append(blocks, i.url)
+	blocks = append(blocks, i.desc)
+	blocks = append(blocks, i.lang)
+	blocks = append(blocks, i.tags...)
+	return strings.Join(blocks, " ")
 }
 
 func main() {
