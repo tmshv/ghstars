@@ -23,11 +23,11 @@ type AddStarMsg struct {
 }
 
 func GhStartFetch() tea.Msg {
-	return &GhstarsStartMsg{}
+	return GhstarsStartMsg{}
 }
 
 func GhStopFetch() tea.Msg {
-	return &GhstarsStopMsg{}
+	return GhstarsStopMsg{}
 }
 
 func Ghfetch(p *tea.Program) {
