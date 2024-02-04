@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
 )
 
 type (
@@ -23,6 +24,10 @@ type model struct {
 	err       error
 }
 
+
+var (
+	username string
+)
 func monthsPassed(t time.Time) int {
 	// f := t.Format("20060102")
 	return int(time.Since(t).Hours() / 24 / 30)
@@ -197,12 +202,31 @@ func (i repoitem) FilterValue() string {
 	return strings.Join(blocks, " ")
 }
 
+func parseCLI() *cobra.Command {
+	var rootCmd = &cobra.Command{
+		Use:   "ghstars",
+		Short: "ghstars fetches and displays GitHub stars for a user",
+		Long:  `ghstars is a CLI application that fetches and displays the GitHub stars for a specified user`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			m := initialModel()
+			p := tea.NewProgram(m, tea.WithAltScreen())
+
+			go Ghfetch(p, username)
+
+			_, err := p.Run()
+			return err
+		},
+	}
+
+	rootCmd.Flags().StringVarP(&username, "username", "u", "", "GitHub username to fetch stars for")
+	rootCmd.MarkFlagRequired("username")
+
+	return rootCmd
+}
+
 func main() {
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
-
-	go Ghfetch(p)
-
-	if _, err := p.Run(); err != nil {
+	rootCmd := parseCLI()
+	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
 }

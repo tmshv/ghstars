@@ -30,7 +30,7 @@ func GhStopFetch() tea.Msg {
 	return GhstarsStopMsg{}
 }
 
-func Ghfetch(p *tea.Program) {
+func Ghfetch(p *tea.Program, username string) {
 	languages := map[string]int{}
 	topics := set.New[string]()
 	envErr := godotenv.Load()
@@ -40,7 +40,7 @@ func Ghfetch(p *tea.Program) {
 	token := os.Getenv("GITHUB_TOKEN")
 	gh := github.New(token)
 	var total int
-	for res := range gh.GetStars("tmshv") {
+	for res := range gh.GetStars(username) {
 		star, err := res.Unwrap()
 		if err != nil {
 			log.Fatalf("Got error: %s", err)
