@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,17 +19,77 @@ type (
 	errMsg error
 )
 
-type model struct {
-	textInput textinput.Model
-	list      list.Model
-	err       error
+type repoitem struct {
+	url      string
+	title    string
+	desc     string
+	tags     []string
+	lang     string
+	archived bool
 }
 
+func (i repoitem) URL() string         { return i.url }
+func (i repoitem) Title() string       { return i.title }
+func (i repoitem) Description() string { return i.desc }
+func (i repoitem) FilterValue() string {
+	var blocks []string
+	blocks = append(blocks, i.url)
+	blocks = append(blocks, i.desc)
+	blocks = append(blocks, i.lang)
+	blocks = append(blocks, i.tags...)
+	return strings.Join(blocks, " ")
+}
+
+type model struct {
+	username     string
+	items        []repoitem
+	showArchived bool
+	textInput    textinput.Model
+	list         list.Model
+	keys         *listKeyMap
+	err          error
+}
+
+func (m *model) getItems() []list.Item {
+	items := make([]list.Item, 0, len(m.items))
+	for _, item := range m.items {
+		if m.showArchived || !item.archived {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+var (
+
+	titleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFDF5")).
+			Background(lipgloss.Color("#25A065")).
+			Padding(0, 1)
+
+	docStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63"))
+)
 
 var (
 	username string
 	useCache bool
 )
+
+type listKeyMap struct {
+	toggleShowArchived key.Binding
+}
+
+func newListKeyMap() *listKeyMap {
+	return &listKeyMap{
+		toggleShowArchived: key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "show archived"),
+		),
+	}
+}
+
 func monthsPassed(t time.Time) int {
 	// f := t.Format("20060102")
 	return int(time.Since(t).Hours() / 24 / 30)
@@ -50,7 +111,7 @@ func OpenURL(url string) error {
 	return nil
 }
 
-func initialModel() model {
+func initialModel(username string) model {
 	var style = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FAFAFA")).
 		Background(lipgloss.Color("#7D56F4"))
@@ -69,16 +130,28 @@ func initialModel() model {
 	ti.CharLimit = 156
 	ti.Width = 20
 
+	var (
+		listKeys = newListKeyMap()
+	)
+
 	listdelegate := list.NewDefaultDelegate()
 	listdelegate.ShowDescription = true
 	listdelegate.SetHeight(3)
 	l := list.New([]list.Item{}, listdelegate, 0, 0)
 	// l.SetFilteringEnabled(false)
-	l.Title = "Stars"
+	l.Title = fmt.Sprintf("%s's Stars", username)
+	l.Styles.Title = titleStyle
+	l.AdditionalFullHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			listKeys.toggleShowArchived,
+		}
+	}
 
 	return model{
+		username:  username,
 		textInput: ti,
 		list:      l,
+		keys:      listKeys,
 		err:       nil,
 	}
 }
@@ -95,8 +168,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Don't match any of the keys below if we're actively filtering.
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
+
+		switch {
+		case key.Matches(msg, m.keys.toggleShowArchived):
+			m.showArchived = !m.showArchived
+			cmd := m.list.SetItems(m.getItems())
+			return m, cmd
+		}
+
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyCtrlC:
 			return m, tea.Quit
 		case tea.KeyEnter:
 			val, ok := m.list.SelectedItem().(repoitem)
@@ -114,9 +199,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AddStarMsg:
 		// Skip archived repo (be an option in the future)
-		if msg.star.Repo.Archived {
-			return m, nil
-		}
 
 		var upd string
 		last := monthsPassed(msg.star.Repo.UpdatedAt)
@@ -135,17 +217,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.star.Repo.Description,
 		)
 		i := repoitem{
-			url:   msg.star.Repo.HTMLURL,
-			title: msg.star.Repo.HTMLURL,
-			desc:  desc,
-			lang:  msg.star.Repo.Language,
-			tags:  msg.star.Repo.Topics,
+			url:      msg.star.Repo.HTMLURL,
+			title:    msg.star.Repo.HTMLURL,
+			desc:     desc,
+			lang:     msg.star.Repo.Language,
+			tags:     msg.star.Repo.Topics,
+			archived: msg.star.Repo.Archived,
 		}
+		m.items = append(m.items, i)
 		m.list.InsertItem(10000, i) // TODO use other value to add at the end of list
 		return m, nil
 
 	case GhstarsStartMsg:
-		return m, m.list.StartSpinner()
+		cmd := m.list.StartSpinner()
+		return m, cmd
 
 	case GhstarsStopMsg:
 		m.list.StopSpinner()
@@ -174,33 +259,9 @@ func (m model) View() string {
 		blocks = append(blocks, docStyle.Render(fmt.Sprintf("select: %s", val.url)))
 	}
 
+	return m.list.View()
+
 	return lipgloss.JoinVertical(lipgloss.Left, blocks...)
-}
-
-// var docStyle = lipgloss.NewStyle().Margin(1, 2)
-// Add a purple, rectangular border
-var docStyle = lipgloss.NewStyle().
-	BorderStyle(lipgloss.RoundedBorder()).
-	BorderForeground(lipgloss.Color("63"))
-
-type repoitem struct {
-	url   string
-	title string
-	desc  string
-	tags  []string
-	lang  string
-}
-
-func (i repoitem) URL() string         { return i.url }
-func (i repoitem) Title() string       { return i.title }
-func (i repoitem) Description() string { return i.desc }
-func (i repoitem) FilterValue() string {
-	var blocks []string
-	blocks = append(blocks, i.url)
-	blocks = append(blocks, i.desc)
-	blocks = append(blocks, i.lang)
-	blocks = append(blocks, i.tags...)
-	return strings.Join(blocks, " ")
 }
 
 func parseCLI() *cobra.Command {
@@ -209,7 +270,7 @@ func parseCLI() *cobra.Command {
 		Short: "ghstars fetches and displays GitHub stars for a user",
 		Long:  `ghstars is a CLI application that fetches and displays the GitHub stars for a specified user`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			m := initialModel()
+			m := initialModel(username)
 			p := tea.NewProgram(m, tea.WithAltScreen())
 
 			go Ghfetch(p, username, useCache)
