@@ -241,6 +241,10 @@ func (r *result) Unwrap() (*GhStarV3, error) {
 	return &r.val, r.err
 }
 
+func (gh *Github) UseCache(val bool) {
+	gh.usecache = val
+}
+
 func (gh *Github) getCachedStars(filename string) ([]byte, error) {
 	_, err := os.Stat(filename)
 	if err != nil {
@@ -346,6 +350,6 @@ func New(token string) *Github {
 	return &Github{
 		token:    token,
 		perpage:  100, // 100 is max
-		usecache: true,
+		usecache: false,
 	}
 }

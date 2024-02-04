@@ -27,6 +27,7 @@ type model struct {
 
 var (
 	username string
+	useCache bool
 )
 func monthsPassed(t time.Time) int {
 	// f := t.Format("20060102")
@@ -211,7 +212,7 @@ func parseCLI() *cobra.Command {
 			m := initialModel()
 			p := tea.NewProgram(m, tea.WithAltScreen())
 
-			go Ghfetch(p, username)
+			go Ghfetch(p, username, useCache)
 
 			_, err := p.Run()
 			return err
@@ -220,6 +221,8 @@ func parseCLI() *cobra.Command {
 
 	rootCmd.Flags().StringVarP(&username, "username", "u", "", "GitHub username to fetch stars for")
 	rootCmd.MarkFlagRequired("username")
+
+	rootCmd.Flags().BoolVarP(&useCache, "cache", "c", false, "Use cached data instead of fetching new data")
 
 	return rootCmd
 }
