@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"github.com/tmshv/ghstars/icons"
 )
 
 type (
@@ -75,6 +76,10 @@ var (
 var (
 	username string
 	useCache bool
+)
+
+var (
+	langIcon icons.LangIcon = icons.Nerd()
 )
 
 type listKeyMap struct {
@@ -210,7 +215,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.star.Repo.Archived {
 			upd = "archived"
 		}
-		desc := fmt.Sprintf("(%s; added %d; stars %d) \n %s",
+		desc := fmt.Sprintf("%s (%s; added %d; stars %d) \n %s",
+			langIcon.Lang(msg.star.Repo.Language),
 			upd,
 			monthsPassed(msg.star.StarredAt),
 			msg.star.Repo.StargazersCount,
